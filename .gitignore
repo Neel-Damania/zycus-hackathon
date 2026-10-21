@@ -1,0 +1,17 @@
+# OS and editor files
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# Build output (also covered by the per-project ignores)
+node_modules/
+dist/
+target/
+
+# Local env overrides
+.env.local
+.env.*.local
+
+# Local tool settings
+.claude/

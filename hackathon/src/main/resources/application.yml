@@ -1,0 +1,78 @@
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: always
+    include-binding-errors: always
+
+spring:
+  application:
+    name: hackathon
+  threads:
+    virtual:
+      enabled: true                # request and scheduler threads are virtual (Java 21)
+  jpa:
+    open-in-view: false            # services return DTOs; no lazy loading during rendering
+
+stockpulse:
+  # Browser origins allowed to call the API (CorsConfig). Add the deployed frontend URL here.
+  cors:
+    path-pattern: /api/**
+    allowed-origins:
+      - http://localhost:5173      # Vite dev server
+      - http://localhost:4173      # Vite preview of the production build
+    allowed-methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+    allowed-headers: ["*"]
+    allow-credentials: false
+    max-age-seconds: 3600
+
+  # Trigger detection (SignalService), shared by both advisors.
+  signals:
+    recent-window-days: 3          # window for recent demand
+    baseline-window-days: 30       # window before the recent one, for normal demand
+    spike-multiplier: 2.0          # DEMAND_SPIKE when recent/day >= this x baseline/day
+    spike-min-recent-units: 5      # ...and at least this many units sold in the recent window
+
+  # RuleAdvisor, also the fallback whenever the LLM is disabled, fails or is rejected.
+  rules:
+    cover-days: 14                       # target stock = demand x (lead time + cover days) + safety stock
+    min-target-threshold-multiple: 2.0   # ...but never below this x the low-stock threshold
+    hot-velocity-ratio: 1.5              # LOW_STOCK counts as hot demand at this recent/baseline ratio
+    hot-price-rise-pct: 2                # price rise when demand is hot
+    scarce-price-rise-pct: 5             # price rise when hot and stock runs out before a restock
+
+  # Advisor strategy at startup: AI (Gemini with rules fallback) or RULES. Switch at runtime with PUT /api/advisor.
+  advisor:
+    strategy: ${STOCKPULSE_ADVISOR_STRATEGY:AI}
+
+  # AiAdvisor guardrails.
+  llm:
+    min-confidence: 0.4            # below this the AI answer is discarded for the rules
+    max-reorder-multiplier: 3.0    # order may not push stock past this x the rule target level
+    max-price-change-pct: 10.0     # price may rise at most this much; it is never cut
+    max-retries: 2                 # extra attempts after a failed or invalid answer, then rules
+    retry-delay: 500ms             # first retry delay, doubled each attempt
+    # LLM endpoint called over plain HTTP by RestClientLlmGateway.
+    # Without a key every call fails fast and the AI strategy answers with the rules (RULES_FALLBACK).
+    gateway:
+      provider: ${LLM_PROVIDER:GEMINI}   # GEMINI, GROQ, OLLAMA or OPENAI (OpenAI-compatible, e.g. LiteLLM)
+      base-url: ${LLM_BASE_URL:https://generativelanguage.googleapis.com}
+      model: ${LLM_MODEL:gemini-2.5-flash}
+      api-key: ${LLM_API_KEY:}
+      temperature: 0.2
+      connect-timeout: 5s
+      read-timeout: 20s
+
+  # Reviewer feedback loop (SuggestionService).
+  feedback:
+    rejection-cooldown: 24h        # no new suggestion of a rejected type for the product within this window
+    history-size: 3                # latest rejections (with notes) shown to the AI advisor
+
+  # Demo products and sales history, created only when the database is empty (DemoDataInitializer).
+  demo-data:
+    enabled: ${STOCKPULSE_DEMO_DATA_ENABLED:true}
+
+  # Scheduled sweep over every product (StockMonitoringService).
+  monitoring:
+    enabled: ${STOCKPULSE_MONITORING_ENABLED:true}
+    initial-delay: PT1M
+    interval: PT15M

@@ -47,28 +47,6 @@ ADR.md               Architecture decision record
   `StockChangedEvent`; an after-commit asynchronous listener evaluates the product. A scheduled
   sweep evaluates every product every 15 minutes.
 
-```
-stock change ──► StockChangedEvent ──(after commit, async)──┐
-scheduled sweep (every 15 min) ─────────────────────────────┤
-"Evaluate" API / button ────────────────────────────────────┤
-                                                            ▼
-   SuggestionEvaluator ─► SignalService: trigger?  LOW_STOCK | DEMAND_SPIKE | none
-                                                            │
-        skip kinds already PENDING or rejected within the cooldown
-                                                            ▼
-   AdvisorEngine ─► active strategy
-        AI:    prompts ─► LlmGateway ─► parse JSON ─► policy check ─► retry ─► rules fallback
-        RULES: target-stock formula
-                                                            ▼
-                Suggestion saved as PENDING (REORDER and/or PRICING)
-                                                            ▼
-   SuggestionReviewService (a person)
-        accept ─► PRICING: product price updated
-                  REORDER: quantity added to on-order stock
-        reject ─► note stored, cooldown starts, AI sees the note next time
-                                                            ▼
-   Delivery received ─► stock up, on-order cleared
-```
 
 ## Suggestion Lifecycle
 
